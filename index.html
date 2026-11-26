@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReadmeRx — your README, diagnosed</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --fg:#e6edf3; --dim:#8b949e; --accent:#58a6ff; --fire:#f76a3c; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--fg); font-family:-apple-system,'Segoe UI',Roboto,sans-serif; min-height:100vh; }
+  .wrap { max-width:760px; margin:0 auto; padding:48px 20px 80px; }
+  .badge-row { display:flex; gap:8px; margin-bottom:28px; }
+  .pill { font-size:12px; color:var(--dim); border:1px solid var(--border); border-radius:20px; padding:4px 12px; }
+  h1 { font-size:42px; line-height:1.15; letter-spacing:-0.5px; margin-bottom:16px; }
+  .sub { color:var(--dim); font-size:18px; margin-bottom:32px; line-height:1.5; }
+  .cta { display:inline-block; background:var(--accent); color:#0d1117; font-weight:700; font-size:18px; border:none; border-radius:10px; padding:16px 36px; cursor:pointer; transition:transform .15s; }
+  .cta:hover { transform:translateY(-2px); }
+  .cta.fire { background:var(--fire); }
+  .proof { margin-top:14px; color:var(--dim); font-size:13px; }
+  #lab { display:none; margin-top:48px; }
+  textarea { width:100%; height:220px; background:var(--panel); color:var(--fg); border:1px solid var(--border); border-radius:10px; padding:16px; font-family:ui-monospace,Menlo,monospace; font-size:13px; resize:vertical; }
+  .go { margin-top:12px; background:#238636; color:#fff; font-weight:600; border:none; border-radius:8px; padding:12px 28px; font-size:15px; cursor:pointer; }
+  .sample { margin-left:10px; background:none; border:1px solid var(--border); color:var(--dim); border-radius:8px; padding:12px 16px; font-size:14px; cursor:pointer; }
+  #result { display:none; margin-top:40px; }
+  .score-card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:28px; display:flex; gap:28px; align-items:center; }
+  .grade { font-size:72px; font-weight:800; line-height:1; }
+  .grade.A{color:#3fb950}.grade.B{color:#58a6ff}.grade.C{color:#d29922}.grade.D,.grade.F{color:#f76a3c}
+  .roast { font-size:17px; line-height:1.5; }
+  .pct { color:var(--dim); font-size:14px; margin-top:6px; }
+  .tips { margin-top:24px; background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:24px; }
+  .tips h3 { margin-bottom:14px; font-size:16px; }
+  .tip { padding:10px 0; border-top:1px solid var(--border); font-size:14px; }
+  .tip b { color:var(--accent); }
+  .tip small { display:block; color:var(--dim); margin-top:4px; }
+  footer { margin-top:64px; color:var(--dim); font-size:13px; border-top:1px solid var(--border); padding-top:20px; }
+  .share { margin-top:20px; background:none; border:1px solid var(--border); color:var(--fg); border-radius:8px; padding:10px 18px; cursor:pointer; font-size:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="badge-row">
+    <span class="pill">free</span><span class="pill">no signup</span><span class="pill">12 checks</span>
+  </div>
+
+  <!-- VARIANT COPY: controlled by Flagsmith multivariate flag `landing_cta` -->
+  <h1 id="headline">…</h1>
+  <p class="sub" id="subline">…</p>
+  <button class="cta" id="cta">…</button>
+  <div class="proof" id="proof">…</div>
+
+  <div id="lab">
+    <textarea id="md" placeholder="# paste your README markdown here…"></textarea>
+    <div>
+      <button class="go" id="analyse">Diagnose</button>
+      <button class="sample" id="sample">try a sample</button>
+    </div>
+  </div>
+
+  <div id="result">
+    <div class="score-card">
+      <div class="grade" id="grade">?</div>
+      <div>
+        <div class="roast" id="roast"></div>
+        <div class="pct" id="pct"></div>
+      </div>
+    </div>
+    <div class="tips" id="tips"></div>
+    <button class="share" id="share">copy my score</button>
+  </div>
+
+  <footer>ReadmeRx — built with feature flags. Every visitor is in an experiment. <a href="https://github.com/Till3005/readmerx" style="color:var(--accent)">source</a></footer>
+</div>
+
+<script type="module">
+import { analyzeReadme } from './analyzer.js';
+
+const COPY = {
+  control: {
+    headline: 'Is your README costing you stars?',
+    subline: '12 heuristics, one letter grade. Paste your README and find out what maintainers really think.',
+    cta: 'Score my README',
+    cls: '',
+    proof: 'takes 10 seconds · nothing leaves your browser',
+  },
+  roast: {
+    headline: 'Your README is mid and you know it.',
+    subline: 'Get roasted by 12 merciless heuristics. Paste it. Take the truth. Fix it.',
+    cta: 'Roast my README 🔥',
+    cls: 'fire',
+    proof: 'warning: brutally honest · nothing leaves your browser',
+  },
+};
+
+// ------- identity: same id for flags and events -------
+function vid() {
+  let v = localStorage.getItem('rx_vid');
+  if (!v) { v = 'u_' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('rx_vid', v); }
+  return v;
+}
+
+const FALLBACK = 'control';
+
+async function boot() {
+  let variant = FALLBACK;
+  let fs = null;
+  try {
+    const mod = await import('https://esm.sh/@flagsmith/flagsmith@12.4.0');
+    const flagsmith = mod.default;
+    fs = flagsmith;
+    await flagsmith.init({
+      environmentID: 'FLAGSMITH_ENV_KEY',
+      identity: vid(),
+      enableEvents: true,
+    });
+    const flag = flagsmith.getExperimentFlag
+      ? flagsmith.getExperimentFlag('landing_cta')
+      : null;
+    if (flag && flag.variant) variant = flag.variant;
+    else if (flag && flag.value) variant = String(flag.value);
+    if (!COPY[variant]) variant = FALLBACK;
+    window.__fs = flagsmith;
+  } catch (e) {
+    console.warn('flagsmith unavailable, control fallback', e);
+  }
+
+  const copy = COPY[variant];
+  document.getElementById('headline').textContent = copy.headline;
+  document.getElementById('subline').textContent = copy.subline;
+  const cta = document.getElementById('cta');
+  cta.textContent = copy.cta;
+  if (copy.cls) cta.classList.add(copy.cls);
+  document.getElementById('proof').textContent = copy.proof;
+
+  const track = ev => { try { window.__fs && window.__fs.trackEvent(ev); } catch (_) {} };
+
+  cta.addEventListener('click', () => {
+    track('cta_click');
+    document.getElementById('lab').style.display = 'block';
+    document.getElementById('lab').scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('md').focus();
+  });
+
+  document.getElementById('analyse').addEventListener('click', () => run(track));
+  document.getElementById('sample').addEventListener('click', () => {
+    document.getElementById('md').value = SAMPLE;
+    run(track);
+  });
+
+  document.getElementById('share').addEventListener('click', async e => {
+    const t = document.getElementById('pct').textContent + ' on ReadmeRx — ' + location.href;
+    try { await navigator.clipboard.writeText(t); e.target.textContent = 'copied!'; setTimeout(()=>e.target.textContent='copy my score', 1800); } catch(_) {}
+  });
+}
+
+function run(track) {
+  const md = document.getElementById('md').value;
+  if (!md.trim()) return;
+  const r = analyzeReadme(md);
+  track('analysis_complete');
+  const g = document.getElementById('grade');
+  g.textContent = r.grade;
+  g.className = 'grade ' + r.grade;
+  document.getElementById('roast').textContent = r.roast;
+  document.getElementById('pct').textContent = `My README scored ${r.pct}/100 (grade ${r.grade})`;
+  const tips = document.getElementById('tips');
+  if (r.missing.length) {
+    tips.innerHTML = '<h3>Prescription (' + r.missing.length + ' fixes)</h3>' + r.missing.map(c =>
+      `<div class="tip"><b>${c.label}</b><small>${c.tip}</small></div>`).join('');
+    tips.style.display = 'block';
+  } else {
+    tips.innerHTML = '<h3>No fixes needed. Frame it.</h3>';
+  }
+  document.getElementById('result').style.display = 'block';
+  document.getElementById('result').scrollIntoView({ behavior: 'smooth' });
+}
+
+const SAMPLE = `# awesome-project\n\nA thing.\n\n## Install\n\nnpm i awesome-project\n`;
+boot();
+</script>
+</body>
+</html>
