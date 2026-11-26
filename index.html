@@ -115,8 +115,8 @@ async function boot() {
     const flag = flagsmith.getExperimentFlag
       ? flagsmith.getExperimentFlag('landing_cta')
       : null;
-    if (flag && flag.variant) variant = flag.variant;
-    else if (flag && flag.value) variant = String(flag.value);
+    if (flag && flag.value) variant = String(flag.value);
+    else if (flag && flag.variant && COPY[flag.variant]) variant = flag.variant;
     if (!COPY[variant]) variant = FALLBACK;
     window.__fs = flagsmith;
   } catch (e) {
